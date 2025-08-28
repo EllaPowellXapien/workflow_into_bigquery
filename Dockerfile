@@ -4,12 +4,12 @@ FROM python:3.11-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy everything in your repo into the container
-COPY . /app
+# Copy requirements first (so Docker cache works efficiently)
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Python dependencies if requirements.txt exists
-RUN pip install --no-cache-dir -r requirements.txt || true
+# Copy everything else in your repo
+COPY . .
 
-# Run main.py as the entry point when the container starts
+# Run your app
 CMD ["python", "main.py"]
-
