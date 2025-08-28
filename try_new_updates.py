@@ -6,6 +6,7 @@ import json
 import csv
 import os
 from datetime import datetime, timezone
+from google.cloud import storage   # ✅ NEW
 
 # --------------------------
 # CONFIG
@@ -16,7 +17,8 @@ INDEX_NAME     = "enquiry"
 API_KEY_ID     = "Iz_amZgBx3uIKls0fAk0"
 API_KEY_SECRET = "-3TYR1tUJ5Sg0Bva2VArwQ"
 
-OUTPUT_CSV     = "updating_urls.csv"   # ✅ renamed
+OUTPUT_CSV     = "updating_urls.csv"   # local temp file
+GCS_BUCKET     = "csv-updater-output"  # ✅ bucket name (create this!)
 POLL_INTERVAL  = 10       # seconds between polls
 BATCH_SIZE     = 200      # docs per request
 
@@ -38,10 +40,22 @@ def pick_first(src: dict, candidates):
     return None
 
 def append_urls(urls):
+    # append to a local CSV
     with open(OUTPUT_CSV, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         for u in urls:
-            w.writerow([u])   # ✅ only URL in first column
+            w.writerow([u])   # only URL in first column
+
+    # upload the file to GCS each time it's updated
+    upload_to_gcs(OUTPUT_CSV, GCS_BUCKET, OUTPUT_CSV)
+
+def upload_to_gcs(local_path: str, bucket_name: str, blob_name: str):
+    """Upload local file to GCS bucket"""
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(local_path)
+    print(f"☁️ Uploaded {local_path} to gs://{bucket_name}/{blob_name}")
 
 # --------------------------
 # Poll once for new docs (StartTime > last_seen_iso)
