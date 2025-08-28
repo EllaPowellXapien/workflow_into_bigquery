@@ -1,12 +1,11 @@
 # try_new_updates.py
 import requests
-import base64
 import time
 import json
 import csv
 import os
 from datetime import datetime, timezone
-from google.cloud import storage   # ✅ NEW
+from google.cloud import storage
 
 # --------------------------
 # CONFIG
@@ -14,43 +13,38 @@ from google.cloud import storage   # ✅ NEW
 ES_ENDPOINT    = "https://mi-reporting.es.us-west-2.aws.found.io"
 INDEX_NAME     = "enquiry"
 
-API_KEY_ID     = "Iz_amZgBx3uIKls0fAk0"
-API_KEY_SECRET = "-3TYR1tUJ5Sg0Bva2VArwQ"
+OUTPUT_CSV     = "updating_urls.csv"
+GCS_BUCKET     = "csv-updater-output"
+POLL_INTERVAL  = 10
+BATCH_SIZE     = 200
 
-OUTPUT_CSV     = "updating_urls.csv"   # local temp file
-GCS_BUCKET     = "csv-updater-output"  # ✅ bucket name (create this!)
-POLL_INTERVAL  = 10       # seconds between polls
-BATCH_SIZE     = 200      # docs per request
-
-# candidate fields in _source
 URL_FIELD_CANDIDATES = ["ReportUrl", "reportUrl", "url"]
+
+TOKEN_FILE = "token.txt"  # ✅ matches what token_with_report writes
 
 # --------------------------
 # Helpers
 # --------------------------
-def make_api_key_header():
-    token = f"{API_KEY_ID}:{API_KEY_SECRET}"
-    b64 = base64.b64encode(token.encode()).decode()
-    return {"Authorization": f"ApiKey {b64}"}
+def read_bearer_token():
+    """Read the latest bearer token from file written by token_with_report.py"""
+    if not os.path.exists(TOKEN_FILE):
+        raise FileNotFoundError(f"{TOKEN_FILE} not found. Run token_with_report.py first.")
+    with open(TOKEN_FILE, "r") as f:
+        token = f.read().strip()
+    return token
 
-def pick_first(src: dict, candidates):
-    for c in candidates:
-        if c in src and src[c] is not None:
-            return src[c]
-    return None
+def make_bearer_header():
+    token = read_bearer_token()
+    return {"Authorization": f"Bearer {token}"}
 
 def append_urls(urls):
-    # append to a local CSV
     with open(OUTPUT_CSV, "a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         for u in urls:
-            w.writerow([u])   # only URL in first column
-
-    # upload the file to GCS each time it's updated
+            w.writerow([u])
     upload_to_gcs(OUTPUT_CSV, GCS_BUCKET, OUTPUT_CSV)
 
 def upload_to_gcs(local_path: str, bucket_name: str, blob_name: str):
-    """Upload local file to GCS bucket"""
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
@@ -58,26 +52,20 @@ def upload_to_gcs(local_path: str, bucket_name: str, blob_name: str):
     print(f"☁️ Uploaded {local_path} to gs://{bucket_name}/{blob_name}")
 
 # --------------------------
-# Poll once for new docs (StartTime > last_seen_iso)
+# Poll once
 # --------------------------
 def poll_once(last_seen_iso: str):
     url = f"{ES_ENDPOINT}/{INDEX_NAME}/_search"
     headers = {
-        **make_api_key_header(),
+        **make_bearer_header(),  # ✅ Bearer token here
         "Content-Type": "application/json"
     }
 
     body = {
         "size": BATCH_SIZE,
         "track_total_hits": False,
-        "query": {
-            "range": {
-                "StartTime": {"gt": last_seen_iso}
-            }
-        },
-        "sort": [
-            {"StartTime": "asc"}
-        ],
+        "query": {"range": {"StartTime": {"gt": last_seen_iso}}},
+        "sort": [{"StartTime": "asc"}],
         "_source": True
     }
 
@@ -96,11 +84,10 @@ def poll_once(last_seen_iso: str):
         if not start_time:
             continue
 
-        report_url = pick_first(src, URL_FIELD_CANDIDATES) or ""
+        report_url = next((src.get(c) for c in URL_FIELD_CANDIDATES if src.get(c)), "")
         if report_url:
             urls.append(report_url)
 
-        # advance checkpoint within this batch
         if start_time > max_seen:
             max_seen = start_time
 
@@ -110,10 +97,9 @@ def poll_once(last_seen_iso: str):
     return max_seen, len(urls)
 
 # --------------------------
-# Main loop (starts from NOW)
+# Main loop
 # --------------------------
 def listen_changes():
-    # Start from current UTC time (only new docs from now on)
     last_seen = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     print(f"🔎 Starting poller, last_seen StartTime = {last_seen}")
 
@@ -128,8 +114,5 @@ def listen_changes():
             print(f"⚠️ Poll error: {e}")
         time.sleep(POLL_INTERVAL)
 
-# --------------------------
-# Entry
-# --------------------------
 if __name__ == "__main__":
     listen_changes()
