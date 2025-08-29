@@ -12,4 +12,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Run your app
-CMD ["python", "try_new_updates.py"]
+CMD ["python", "-c", "print('✅ Hello from Cloud Run Job!')"]
+
