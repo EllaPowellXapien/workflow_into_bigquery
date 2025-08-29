@@ -2,6 +2,7 @@ import requests
 import json
 from datetime import datetime, timezone
 from google.cloud import storage
+print("script started")
 
 # --------------------------
 # CONFIG
