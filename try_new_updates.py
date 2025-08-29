@@ -1,9 +1,7 @@
-# try_new_updates.py
 import requests
 import time
 import json
 import csv
-import os
 from datetime import datetime, timezone
 from google.cloud import storage
 
@@ -13,59 +11,75 @@ from google.cloud import storage
 ES_ENDPOINT    = "https://mi-reporting.es.us-west-2.aws.found.io"
 INDEX_NAME     = "enquiry"
 
-OUTPUT_CSV     = "updating_urls.csv"
-GCS_BUCKET     = "csv-updater-output"
-POLL_INTERVAL  = 10
-BATCH_SIZE     = 200
+OUTPUT_BUCKET  = "csv-updater-output"
+OUTPUT_FILE    = "updating_urls.csv"
+
+POLL_INTERVAL  = 10       # seconds between polls
+BATCH_SIZE     = 200      # docs per request
 
 URL_FIELD_CANDIDATES = ["ReportUrl", "reportUrl", "url"]
 
-TOKEN_FILE = "token.txt"  # ✅ matches what token_with_report writes
 
 # --------------------------
 # Helpers
 # --------------------------
 def read_bearer_token():
-    """Read the latest bearer token from file written by token_with_report.py"""
-    if not os.path.exists(TOKEN_FILE):
-        raise FileNotFoundError(f"{TOKEN_FILE} not found. Run token_with_report.py first.")
-    with open(TOKEN_FILE, "r") as f:
-        token = f.read().strip()
-    return token
+    """Download latest bearer token from GCS"""
+    client = storage.Client()
+    bucket = client.bucket("xapien-token-store")
+    blob = bucket.blob("token.txt")
+    return blob.download_as_text().strip()
 
 def make_bearer_header():
-    token = read_bearer_token()
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {read_bearer_token()}"}
 
-def append_urls(urls):
-    with open(OUTPUT_CSV, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        for u in urls:
-            w.writerow([u])
-    upload_to_gcs(OUTPUT_CSV, GCS_BUCKET, OUTPUT_CSV)
+def pick_first(src: dict, candidates):
+    for c in candidates:
+        if c in src and src[c] is not None:
+            return src[c]
+    return None
 
-def upload_to_gcs(local_path: str, bucket_name: str, blob_name: str):
+def append_urls_to_gcs(urls):
+    """Append URLs to CSV stored in GCS"""
     client = storage.Client()
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-    blob.upload_from_filename(local_path)
-    print(f"☁️ Uploaded {local_path} to gs://{bucket_name}/{blob_name}")
+    bucket = client.bucket(OUTPUT_BUCKET)
+    blob = bucket.blob(OUTPUT_FILE)
+
+    # Download current CSV (if exists)
+    try:
+        existing = blob.download_as_text().splitlines()
+    except Exception:
+        existing = []
+
+    # Append new rows
+    writer_rows = existing + [u for u in urls]
+
+    # Upload back to GCS
+    blob.upload_from_string("\n".join(writer_rows))
+    print(f"☁️ Appended {len(urls)} URLs to gs://{OUTPUT_BUCKET}/{OUTPUT_FILE}")
+
 
 # --------------------------
-# Poll once
+# Poll once for new docs
 # --------------------------
 def poll_once(last_seen_iso: str):
     url = f"{ES_ENDPOINT}/{INDEX_NAME}/_search"
     headers = {
-        **make_bearer_header(),  # ✅ Bearer token here
+        **make_bearer_header(),
         "Content-Type": "application/json"
     }
 
     body = {
         "size": BATCH_SIZE,
         "track_total_hits": False,
-        "query": {"range": {"StartTime": {"gt": last_seen_iso}}},
-        "sort": [{"StartTime": "asc"}],
+        "query": {
+            "range": {
+                "StartTime": {"gt": last_seen_iso}
+            }
+        },
+        "sort": [
+            {"StartTime": "asc"}
+        ],
         "_source": True
     }
 
@@ -84,7 +98,7 @@ def poll_once(last_seen_iso: str):
         if not start_time:
             continue
 
-        report_url = next((src.get(c) for c in URL_FIELD_CANDIDATES if src.get(c)), "")
+        report_url = pick_first(src, URL_FIELD_CANDIDATES) or ""
         if report_url:
             urls.append(report_url)
 
@@ -92,9 +106,10 @@ def poll_once(last_seen_iso: str):
             max_seen = start_time
 
     if urls:
-        append_urls(urls)
+        append_urls_to_gcs(urls)
 
     return max_seen, len(urls)
+
 
 # --------------------------
 # Main loop
@@ -114,5 +129,9 @@ def listen_changes():
             print(f"⚠️ Poll error: {e}")
         time.sleep(POLL_INTERVAL)
 
+
+# --------------------------
+# Entry
+# --------------------------
 if __name__ == "__main__":
     listen_changes()
