@@ -12,4 +12,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Run your app
-CMD ["python", "main.py"]
+CMD ["python", "try_new_updates.py"]
