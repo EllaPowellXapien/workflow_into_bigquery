@@ -1,7 +1,5 @@
 import requests
-import time
 import json
-import csv
 from datetime import datetime, timezone
 from google.cloud import storage
 
@@ -14,9 +12,7 @@ INDEX_NAME     = "enquiry"
 OUTPUT_BUCKET  = "csv-updater-output"
 OUTPUT_FILE    = "updating_urls.csv"
 
-POLL_INTERVAL  = 10       # seconds between polls
 BATCH_SIZE     = 200      # docs per request
-
 URL_FIELD_CANDIDATES = ["ReportUrl", "reportUrl", "url"]
 
 
@@ -49,7 +45,7 @@ def append_urls_to_gcs(urls):
     try:
         existing = blob.download_as_text().splitlines()
     except Exception:
-        existing = []
+        existing = ["url"]  # start with header
 
     # Append new rows
     writer_rows = existing + [u for u in urls]
@@ -112,26 +108,24 @@ def poll_once(last_seen_iso: str):
 
 
 # --------------------------
-# Main loop
+# Main (single run for Cloud Run Job)
 # --------------------------
-def listen_changes():
+def main():
     last_seen = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    print(f"🔎 Starting poller, last_seen StartTime = {last_seen}")
+    print(f"🔎 Running single poll, last_seen StartTime = {last_seen}")
 
-    while True:
-        try:
-            last_seen, n = poll_once(last_seen)
-            if n:
-                print(f"📥 Appended {n} new URLs; new last_seen={last_seen}")
-            else:
-                print("… no new docs")
-        except Exception as e:
-            print(f"⚠️ Poll error: {e}")
-        time.sleep(POLL_INTERVAL)
+    try:
+        last_seen, n = poll_once(last_seen)
+        if n:
+            print(f"📥 Appended {n} new URLs; new last_seen={last_seen}")
+        else:
+            print("… no new docs")
+    except Exception as e:
+        print(f"⚠️ Poll error: {e}")
 
 
 # --------------------------
 # Entry
 # --------------------------
 if __name__ == "__main__":
-    listen_changes()
+    main()
