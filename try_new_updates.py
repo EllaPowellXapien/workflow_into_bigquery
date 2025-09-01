@@ -2,8 +2,8 @@ import requests
 import base64
 import time
 import json
-import csv
 from datetime import datetime, timezone
+from google.cloud import storage
 
 # --------------------------
 # CONFIG
@@ -11,33 +11,57 @@ from datetime import datetime, timezone
 ES_ENDPOINT    = "https://mi-reporting.es.us-west-2.aws.found.io"
 INDEX_NAME     = "enquiry"
 
+OUTPUT_BUCKET  = "csv-updater-output"
+OUTPUT_FILE    = "updating_urls.csv"
+
+POLL_INTERVAL  = 10       # seconds between polls
+BATCH_SIZE     = 200      # docs per request
+
+# API key credentials
 API_KEY_ID     = "Iz_amZgBx3uIKls0fAk0"
 API_KEY_SECRET = "-3TYR1tUJ5Sg0Bva2VArwQ"
 
-OUTPUT_CSV     = "updating_urls.csv"
-BATCH_SIZE     = 200
-
+# Candidate URL fields inside documents
 URL_FIELD_CANDIDATES = ["ReportUrl", "reportUrl", "url"]
+
 
 # --------------------------
 # Helpers
 # --------------------------
 def make_api_key_header():
+    """Build ApiKey auth header for Elasticsearch."""
     token = f"{API_KEY_ID}:{API_KEY_SECRET}"
     b64 = base64.b64encode(token.encode()).decode()
     return {"Authorization": f"ApiKey {b64}"}
 
+
 def pick_first(src: dict, candidates):
+    """Pick the first non-null field from candidates."""
     for c in candidates:
-        if c in src and src[c]:
+        if c in src and src[c] is not None:
             return src[c]
     return None
 
-def append_urls(urls):
-    with open(OUTPUT_CSV, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        for u in urls:
-            w.writerow([u])
+
+def append_urls_to_gcs(urls):
+    """Append URLs to CSV stored in GCS."""
+    client = storage.Client()
+    bucket = client.bucket(OUTPUT_BUCKET)
+    blob = bucket.blob(OUTPUT_FILE)
+
+    # Download current CSV (if exists)
+    try:
+        existing = blob.download_as_text().splitlines()
+    except Exception:
+        existing = ["url"]  # header row if file doesn’t exist yet
+
+    # Append new rows
+    writer_rows = existing + urls
+
+    # Upload back to GCS
+    blob.upload_from_string("\n".join(writer_rows))
+    print(f"☁️ Appended {len(urls)} URLs to gs://{OUTPUT_BUCKET}/{OUTPUT_FILE}")
+
 
 # --------------------------
 # Poll once for new docs
@@ -63,7 +87,9 @@ def poll_once(last_seen_iso: str):
         "_source": True
     }
 
+    print(f"🔎 Sending ES query with last_seen={last_seen_iso}")
     resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=90)
+
     if resp.status_code != 200:
         raise RuntimeError(f"Search failed {resp.status_code}: {resp.text[:300]}")
 
@@ -86,28 +112,32 @@ def poll_once(last_seen_iso: str):
             max_seen = start_time
 
     if urls:
-        append_urls(urls)
+        append_urls_to_gcs(urls)
 
     return max_seen, len(urls)
 
-# --------------------------
-# Run once
-# --------------------------
-def main():
-    last_seen = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    print(f"🔎 Running single poll, last_seen StartTime = {last_seen}")
 
-    try:
-        last_seen, n = poll_once(last_seen)
-        if n:
-            print(f"📥 Appended {n} new URLs; new last_seen={last_seen}")
-        else:
-            print("… no new docs this run")
-    except Exception as e:
-        print(f"⚠️ Poll error: {e}")
+# --------------------------
+# Main loop
+# --------------------------
+def listen_changes():
+    last_seen = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    print(f"🚀 Starting poller, last_seen StartTime = {last_seen}")
+
+    while True:
+        try:
+            last_seen, n = poll_once(last_seen)
+            if n:
+                print(f"📥 Appended {n} new URLs; new last_seen={last_seen}")
+            else:
+                print("… no new docs this run")
+        except Exception as e:
+            print(f"⚠️ Poll error: {e}")
+        time.sleep(POLL_INTERVAL)
+
 
 # --------------------------
 # Entry
 # --------------------------
 if __name__ == "__main__":
-    main()
+    listen_changes()
