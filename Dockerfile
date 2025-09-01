@@ -1,6 +1,9 @@
 FROM python:3.11-slim
 
 WORKDIR /app
-COPY hello.py /app
+COPY requirements.txt /app/
+COPY main.py /app/
 
-CMD ["python", "main.py"]
+RUN pip install --no-cache-dir -r requirements.txt || true
+
+CMD ["python", "/app/main.py"]
