@@ -2,7 +2,6 @@ import requests
 import json
 from datetime import datetime, timezone
 from google.cloud import storage
-print("script started")
 
 # --------------------------
 # CONFIG
@@ -36,6 +35,19 @@ def pick_first(src: dict, candidates):
             return src[c]
     return None
 
+def ensure_csv_exists():
+    """Make sure the CSV file exists in GCS with a header row"""
+    client = storage.Client()
+    bucket = client.bucket(OUTPUT_BUCKET)
+    blob = bucket.blob(OUTPUT_FILE)
+
+    if not blob.exists():
+        blob.upload_from_string("url\n")
+        print(f"☁️ Created empty CSV at gs://{OUTPUT_BUCKET}/{OUTPUT_FILE}")
+    else:
+        print(f"CSV already exists at gs://{OUTPUT_BUCKET}/{OUTPUT_FILE}")
+
+
 def append_urls_to_gcs(urls):
     """Append URLs to CSV stored in GCS"""
     client = storage.Client()
@@ -46,7 +58,7 @@ def append_urls_to_gcs(urls):
     try:
         existing = blob.download_as_text().splitlines()
     except Exception:
-        existing = ["url"]  # start with header
+        existing = ["url"]  # start with header if somehow missing
 
     # Append new rows
     writer_rows = existing + [u for u in urls]
@@ -80,7 +92,8 @@ def poll_once(last_seen_iso: str):
         "_source": True
     }
 
-    resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=90)
+    print("📡 Querying Elasticsearch...")
+    resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=30)
     if resp.status_code != 200:
         raise RuntimeError(f"Search failed {resp.status_code}: {resp.text[:500]}")
 
@@ -104,39 +117,33 @@ def poll_once(last_seen_iso: str):
 
     if urls:
         append_urls_to_gcs(urls)
+        print("🔗 URLs added:", urls)
+    else:
+        print("… no new docs found")
 
     return max_seen, len(urls)
-
-from google.cloud import storage
-
-def ensure_csv_exists():
-    client = storage.Client()
-    bucket = client.bucket("csv-updater-output")
-    blob = bucket.blob("updating_urls.csv")
-
-    if not blob.exists():
-        blob.upload_from_string("url\n")
-        print("Created empty CSV at gs://csv-updater-output/updating_urls.csv")
-
-ensure_csv_exists()
-
 
 
 # --------------------------
 # Main (single run for Cloud Run Job)
 # --------------------------
 def main():
+    print("main.py started in Cloud Run Job")
+
+    # Ensure CSV file exists
+    ensure_csv_exists()
+
     last_seen = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     print(f"🔎 Running single poll, last_seen StartTime = {last_seen}")
 
     try:
         last_seen, n = poll_once(last_seen)
         if n:
-            print(f"📥 Appended {n} new URLs; new last_seen={last_seen}")
+            print(f" Appended {n} new URLs; new last_seen={last_seen}")
         else:
-            print("… no new docs")
+            print("… no new docs this run")
     except Exception as e:
-        print(f"⚠️ Poll error: {e}")
+        print(f" Poll error: {e}")
 
 
 # --------------------------
