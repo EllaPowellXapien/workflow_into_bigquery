@@ -107,6 +107,20 @@ def poll_once(last_seen_iso: str):
 
     return max_seen, len(urls)
 
+from google.cloud import storage
+
+def ensure_csv_exists():
+    client = storage.Client()
+    bucket = client.bucket("csv-updater-output")
+    blob = bucket.blob("updating_urls.csv")
+
+    if not blob.exists():
+        blob.upload_from_string("url\n")
+        print("Created empty CSV at gs://csv-updater-output/updating_urls.csv")
+
+ensure_csv_exists()
+
+
 
 # --------------------------
 # Main (single run for Cloud Run Job)
