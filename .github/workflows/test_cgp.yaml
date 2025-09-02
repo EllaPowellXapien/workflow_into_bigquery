@@ -1,31 +1,52 @@
-name: test-gcp
+name: run-csv-updater
 
 on:
-  workflow_dispatch:  # allows you to run manually from GitHub Actions tab
+  workflow_dispatch:   # manual trigger for testing
+  schedule:            # optional: run every 30 minutes
+    - cron: "*/30 * * * *"
 
 jobs:
-  test:
+  run:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      # Step 1: Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Step 2: Authenticate to Google Cloud using service account key
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_KEY }}
 
-      - name: Install gcloud CLI
+      # Step 3: Set up gcloud CLI
+      - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: cs-dashboard-468310
 
+      # Step 4: Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      # Step 5: Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install google-cloud-storage google-cloud-bigquery elasticsearch requests
+
+      # Step 6: Run your updater script
+      - name: Run CSV updater
+        run: |
+          echo "🚀 Running CSV updater..."
+          python main.py
+
+      # Step 7: Upload test file to GCS (to confirm access)
       - name: Test GCS write
         run: |
-          echo "Hello from GitHub Actions at $(date)" > test.txt
-          gsutil cp test.txt gs://csv-updater-output/test.txt
-
-      - name: Test GCS read
-        run: |
-          gsutil cat gs://csv-updater-output/test.txt
+          echo "✅ GitHub Action ran at $(date)" > test_output.txt
+          gsutil cp test_output.txt gs://csv-updater-output/test_output.txt
