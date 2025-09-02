@@ -1,0 +1,36 @@
+name: CSV Updater
+
+on:
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: "*/30 * * * *"   # every 30 minutes
+
+jobs:
+  update-csv:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt google-cloud-storage elasticsearch requests
+
+    - name: Authenticate with Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_KEY }}
+
+    - name: Run URL fetcher
+      run: python url_fetcher.py
+
+    - name: Run JSON processor
+      run: python process_jsons.py
