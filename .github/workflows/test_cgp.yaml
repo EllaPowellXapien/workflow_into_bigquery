@@ -1,0 +1,31 @@
+name: test-gcp
+
+on:
+  workflow_dispatch:  # allows you to run manually from GitHub Actions tab
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_KEY }}
+
+      - name: Install gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: cs-dashboard-468310
+
+      - name: Test GCS write
+        run: |
+          echo "Hello from GitHub Actions at $(date)" > test.txt
+          gsutil cp test.txt gs://csv-updater-output/test.txt
+
+      - name: Test GCS read
+        run: |
+          gsutil cat gs://csv-updater-output/test.txt
