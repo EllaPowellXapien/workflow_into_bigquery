@@ -1,34 +1,40 @@
-name: CSV Updater
+name: run-csv-updater
 
 on:
+  workflow_dispatch:   # run manually
   push:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
   run-csv-updater:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-      - name: Authenticate with Google Cloud
-        uses: google-github-actions/auth@v2
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_KEY }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Debug check secret
+        run: |
+          if [ -z "${{ secrets.GCP_KEY }}" ]; then
+            echo "GCP_KEY secret is NOT set!"
+            exit 1
+          else
+            echo " GCP_KEY secret is detected."
+            echo "${{ secrets.GCP_KEY }}" | jq 'keys' || echo "JSON not valid"
+          fi
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
         with:
-          python-version: "3.11"
+          project_id: cs-dashboard-468310
 
-      - name: Install dependencies
+      - name: Run script
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run updater script
-        run: |
-          python update_csv.py
+          python3 your_script.py
