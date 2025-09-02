@@ -3,10 +3,10 @@ name: Workflow to BigQuery
 on:
   schedule:
     - cron: "*/30 * * * *"   # every 30 minutes
-  workflow_dispatch:          # manual trigger
+  workflow_dispatch:          # allow manual trigger
 
 jobs:
-  run-scripts:
+  pipeline:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,7 +23,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt google-cloud-bigquery google-cloud-storage elasticsearch requests aiohttp
 
-    - name: Run main script
+    # Step 1: Fetch URLs from Elasticsearch
+    - name: Run poller (fetch URLs)
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
         ES_ENDPOINT: "https://mi-reporting.es.us-west-2.aws.found.io"
@@ -31,4 +32,23 @@ jobs:
         ES_API_KEY_SECRET: ${{ secrets.ES_API_KEY_SECRET }}
       run: |
         echo "${{ secrets.GCP_KEY }}" > $GOOGLE_APPLICATION_CREDENTIALS
-        python main.py
+        python try_new_updates.py
+
+    # Step 2: Download JSON reports
+    - name: Download reports
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
+      run: |
+        python downloader_hot_reload_token.py
+
+    # Step 3: Convert JSON → CSV
+    - name: Process JSON to CSV
+      run: |
+        python updating_json_to_new_csv.py
+
+    # Step 4: Append CSV → BigQuery
+    - name: Upload to BigQuery
+      env:
+        GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
+      run: |
+        python upload_to_bigquery.py
