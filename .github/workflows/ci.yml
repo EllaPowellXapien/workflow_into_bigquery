@@ -23,6 +23,14 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt google-cloud-bigquery google-cloud-storage elasticsearch requests aiohttp
 
+    # Authenticate with GCP (using service account JSON from secrets)
+    - id: auth
+      name: Authenticate to Google Cloud
+      if: github.actor != 'dependabot[bot]' && github.event_name != 'pull_request'
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+
     # Step 1: Fetch URLs from Elasticsearch
     - name: Run poller (fetch URLs)
       env:
@@ -31,7 +39,7 @@ jobs:
         ES_API_KEY_ID: ${{ secrets.ES_API_KEY_ID }}
         ES_API_KEY_SECRET: ${{ secrets.ES_API_KEY_SECRET }}
       run: |
-        echo "${{ secrets.GCP_KEY }}" > $GOOGLE_APPLICATION_CREDENTIALS
+        echo "${{ secrets.GCP_CREDENTIALS }}" > $GOOGLE_APPLICATION_CREDENTIALS
         python try_new_updates.py
 
     # Step 2: Download JSON reports
