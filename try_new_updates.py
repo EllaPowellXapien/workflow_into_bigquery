@@ -24,16 +24,13 @@ API_KEY_SECRET = "-3TYR1tUJ5Sg0Bva2VArwQ"
 # Candidate URL fields inside documents
 URL_FIELD_CANDIDATES = ["ReportUrl", "reportUrl", "url"]
 
+MAX_POLLS = 1  # Limit for CI
 
-# --------------------------
-# Helpers
-# --------------------------
 def make_api_key_header():
     """Build ApiKey auth header for Elasticsearch."""
     token = f"{API_KEY_ID}:{API_KEY_SECRET}"
     b64 = base64.b64encode(token.encode()).decode()
     return {"Authorization": f"ApiKey {b64}"}
-
 
 def pick_first(src: dict, candidates):
     """Pick the first non-null field from candidates."""
@@ -42,37 +39,25 @@ def pick_first(src: dict, candidates):
             return src[c]
     return None
 
-
 def append_urls_to_gcs(urls):
     """Append URLs to CSV stored in GCS."""
     client = storage.Client()
     bucket = client.bucket(OUTPUT_BUCKET)
     blob = bucket.blob(OUTPUT_FILE)
-
-    # Download current CSV (if exists)
     try:
         existing = blob.download_as_text().splitlines()
     except Exception:
         existing = ["url"]  # header row if file doesn’t exist yet
-
-    # Append new rows
     writer_rows = existing + urls
-
-    # Upload back to GCS
     blob.upload_from_string("\n".join(writer_rows))
     print(f"☁️ Appended {len(urls)} URLs to gs://{OUTPUT_BUCKET}/{OUTPUT_FILE}")
 
-
-# --------------------------
-# Poll once for new docs
-# --------------------------
 def poll_once(last_seen_iso: str):
     url = f"{ES_ENDPOINT}/{INDEX_NAME}/_search"
     headers = {
         **make_api_key_header(),
         "Content-Type": "application/json"
     }
-
     body = {
         "size": BATCH_SIZE,
         "track_total_hits": False,
@@ -86,45 +71,32 @@ def poll_once(last_seen_iso: str):
         ],
         "_source": True
     }
-
     print(f"🔎 Sending ES query with last_seen={last_seen_iso}")
     resp = requests.post(url, headers=headers, data=json.dumps(body), timeout=90)
-
     if resp.status_code != 200:
         raise RuntimeError(f"Search failed {resp.status_code}: {resp.text[:300]}")
-
     data = resp.json()
     hits = data.get("hits", {}).get("hits", [])
     urls = []
     max_seen = last_seen_iso
-
     for h in hits:
         src = h.get("_source", {})
         start_time = src.get("StartTime") or src.get("startTime")
         if not start_time:
             continue
-
         report_url = pick_first(src, URL_FIELD_CANDIDATES)
         if report_url:
             urls.append(report_url)
-
         if start_time > max_seen:
             max_seen = start_time
-
     if urls:
         append_urls_to_gcs(urls)
-
     return max_seen, len(urls)
 
-
-# --------------------------
-# Main loop
-# --------------------------
-def listen_changes():
+def listen_changes(max_polls=MAX_POLLS):
     last_seen = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     print(f"🚀 Starting poller, last_seen StartTime = {last_seen}")
-
-    while True:
+    for _ in range(max_polls):
         try:
             last_seen, n = poll_once(last_seen)
             if n:
@@ -135,9 +107,5 @@ def listen_changes():
             print(f"⚠️ Poll error: {e}")
         time.sleep(POLL_INTERVAL)
 
-
-# --------------------------
-# Entry
-# --------------------------
 if __name__ == "__main__":
     listen_changes()
