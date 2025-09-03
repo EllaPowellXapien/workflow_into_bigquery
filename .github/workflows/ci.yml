@@ -39,7 +39,7 @@ jobs:
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
       run: |
-        python downloader_hot_reload_token.py
+        python token_with_report.py
 
     # Step 3: Convert JSON → CSV
     - name: Process JSON to CSV
