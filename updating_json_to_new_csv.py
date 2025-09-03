@@ -11,6 +11,25 @@ OUTPUT_BUCKET = "csv-updater-output"
 OUTPUT_FILE = "updating_scripts_summary.csv"
 PROCESSED_LOG = "processed_files.log"
 
+# ... [imports and config as before] ...
+
+MAX_POLLS = 1  # Limit for CI
+
+def monitor_folder(max_polls=MAX_POLLS):
+    logging.info(f" Watching folder: {WATCH_FOLDER}")
+    for _ in range(max_polls):
+        try:
+            for file in os.listdir(WATCH_FOLDER):
+                if file.endswith(".json"):
+                    full_path = os.path.join(WATCH_FOLDER, file)
+                    extract_json_data(full_path)
+        except Exception as e:
+            logging.error(f"Error during folder monitoring: {e}")
+        time.sleep(5)
+
+if __name__ == "__main__":
+    monitor_folder()
+
 # --- LOGGING ---
 logging.basicConfig(
     level=logging.INFO,
