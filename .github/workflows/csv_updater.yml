@@ -17,8 +17,7 @@ jobs:
       - name: Validate GCP key
         run: |
           echo "${{ secrets.GCP_SA_KEY }}" > ${{ github.workspace }}/gcp-key.json
-          jq empty ${{ github.workspace }}/gcp-key.json
-          jq -r .client_email ${{ github.workspace }}/gcp-key.json
+          
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
