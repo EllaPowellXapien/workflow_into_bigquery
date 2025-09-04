@@ -14,11 +14,17 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
+      # Validate and write the service account key
+      - name: Write GCP key to file
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > ${{ github.workspace }}/gcp-key.json
+          jq empty ${{ github.workspace }}/gcp-key.json
+
       - name: Authenticate to Google Cloud
         id: auth
-        uses: google-github-actions/auth@v1
+        uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
       - name: Debug check secret
         run: |
@@ -26,8 +32,8 @@ jobs:
             echo "GCP_SA_KEY secret is NOT set!"
             exit 1
           else
-            echo " GCP_SA_KEY secret is detected."
-            echo "${{ secrets.GCP_KEY }}" | jq 'keys' || echo "JSON not valid"
+            echo "GCP_SA_KEY secret is detected."
+            echo "${{ secrets.GCP_SA_KEY }}" | jq 'keys' || echo "JSON not valid"
           fi
 
       - name: Set up Cloud SDK
@@ -36,5 +42,7 @@ jobs:
           project_id: cs-dashboard-468310
 
       - name: Run script
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
         run: |
           python3 your_script.py
