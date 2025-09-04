@@ -23,9 +23,13 @@ jobs:
           pip install -r requirements.txt
           pip install google-cloud-storage elasticsearch requests
 
+      - name: Write GCP key to file
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > ${{ github.workspace }}/gcp-key.json
+          jq empty ${{ github.workspace }}/gcp-key.json
+
       - name: Run script
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
         run: |
-          echo "${{ secrets.GCP_SA_KEY }}" > gcp-key.json
           python main.py
