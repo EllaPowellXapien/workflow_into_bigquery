@@ -26,7 +26,7 @@ jobs:
     # Validate and write GCP key
     - name: Validate GCP key
       run: |
-        echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > ${{ github.workspace }}/gcp-key.json
+        echo "${{ secrets.GCP_SA_KEY }}"  > ${{ github.workspace }}/gcp-key.json
         jq empty ${{ github.workspace }}/gcp-key.json
         jq -r .client_email ${{ github.workspace }}/gcp-key.json
 
