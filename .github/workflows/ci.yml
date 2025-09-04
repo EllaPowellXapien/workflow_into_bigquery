@@ -23,24 +23,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt google-cloud-bigquery google-cloud-storage elasticsearch requests aiohttp
 
-    # DEBUG: Check if the GCP_SA_KEY secret is available
-    - name: Debug check GCP_SA_KEY secret
+    # Validate and write GCP key
+    - name: Validate GCP key
       run: |
-        if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then
-          echo "GCP_SA_KEY secret is NOT set!"
-          exit 1
-        else
-          echo "GCP_SA_KEY secret is detected."
-          echo "${{ secrets.GCP_SA_KEY }}" | jq 'keys' || echo "Secret present but not valid JSON"
-        fi
-
-    # Authenticate with GCP using service account JSON from secrets
-    - id: auth
-      name: Authenticate to Google Cloud
-      if: github.actor != 'dependabot[bot]' && github.event_name != 'pull_request'
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+        echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > ${{ github.workspace }}/gcp-key.json
+        jq empty ${{ github.workspace }}/gcp-key.json
+        jq -r .client_email ${{ github.workspace }}/gcp-key.json
 
     # Step 1: Fetch URLs from Elasticsearch
     - name: Run poller (fetch URLs)
@@ -50,8 +38,6 @@ jobs:
         ES_API_KEY_ID: ${{ secrets.ES_API_KEY_ID }}
         ES_API_KEY_SECRET: ${{ secrets.ES_API_KEY_SECRET }}
       run: |
-        echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > $GOOGLE_APPLICATION_CREDENTIALS
-        jq empty $GOOGLE_APPLICATION_CREDENTIALS
         python try_new_updates.py
 
     # Step 2: Download JSON reports
@@ -59,8 +45,6 @@ jobs:
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
       run: |
-        echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > $GOOGLE_APPLICATION_CREDENTIALS
-        jq empty $GOOGLE_APPLICATION_CREDENTIALS
         python token_with_report.py
 
     # Step 3: Convert JSON → CSV
@@ -73,6 +57,4 @@ jobs:
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
       run: |
-        echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > $GOOGLE_APPLICATION_CREDENTIALS
-        jq empty $GOOGLE_APPLICATION_CREDENTIALS
         python upload_to_bigquery.py
