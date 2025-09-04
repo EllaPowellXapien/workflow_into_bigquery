@@ -50,7 +50,8 @@ jobs:
         ES_API_KEY_ID: ${{ secrets.ES_API_KEY_ID }}
         ES_API_KEY_SECRET: ${{ secrets.ES_API_KEY_SECRET }}
       run: |
-        echo "${{ secrets.GCP_SA_KEY }}" > $GOOGLE_APPLICATION_CREDENTIALS
+        echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > $GOOGLE_APPLICATION_CREDENTIALS
+        jq empty $GOOGLE_APPLICATION_CREDENTIALS
         python try_new_updates.py
 
     # Step 2: Download JSON reports
@@ -58,6 +59,8 @@ jobs:
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
       run: |
+        echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > $GOOGLE_APPLICATION_CREDENTIALS
+        jq empty $GOOGLE_APPLICATION_CREDENTIALS
         python token_with_report.py
 
     # Step 3: Convert JSON → CSV
@@ -70,4 +73,6 @@ jobs:
       env:
         GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
       run: |
+        echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > $GOOGLE_APPLICATION_CREDENTIALS
+        jq empty $GOOGLE_APPLICATION_CREDENTIALS
         python upload_to_bigquery.py
