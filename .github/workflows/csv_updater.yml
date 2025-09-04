@@ -3,7 +3,7 @@ name: run-csv-updater
 on:
   workflow_dispatch:   # manual trigger for testing
   schedule:            # optional: run every 30 minutes
-    - cron: "*/30 * * * *"
+   # - cron: "*/30 * * * *"
 
 jobs:
   run:
