@@ -1,12 +1,12 @@
-name: Run Poller Every 30 Seconds
+name: Run Poller
 
 on:
   schedule:
-    - cron: '*/1 * * * *'  # Every 1 minute (cron doesn't support 30s natively)
-  workflow_dispatch:
+    - cron: "*/10 * * * *"   # every 10 minutes
+  workflow_dispatch:         # allow manual trigger
 
 jobs:
-  run:
+  run-poller:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,14 +20,18 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install google-cloud-storage elasticsearch requests
 
-      - name: Run poller (fetch URLs)
+      # Validate and write GCP key
+      - name: Validate GCP key
         run: |
-          python try_new_updates.py
+          echo "${{ secrets.GCP_SA_KEY }}" | tr -d '\r' | sed 's/\\n/\n/g' > ${{ github.workspace }}/gcp-key.json
+          jq empty ${{ github.workspace }}/gcp-key.json
+          jq -r .client_email ${{ github.workspace }}/gcp-key.json
+
+      - name: Run script
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-          ES_API_KEY_ID: ${{ secrets.ES_API_KEY_ID }}
-          ES_API_KEY_SECRET: ${{ secrets.ES_API_KEY_SECRET }}
-          ES_ENDPOINT: https://mi-reporting.es.us-west-2.aws.found.io
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/gcp-key.json
+        run: |
+          python main.py
