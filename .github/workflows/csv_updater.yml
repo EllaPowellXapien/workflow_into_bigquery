@@ -18,15 +18,15 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v1
         with:
-          credentials_json: ${{ secrets.GCP_KEY }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Debug check secret
         run: |
-          if [ -z "${{ secrets.GCP_KEY }}" ]; then
+          if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then
             echo "GCP_KEY secret is NOT set!"
             exit 1
           else
-            echo " GCP_KEY secret is detected."
+            echo " GCP_SA_KEY secret is detected."
             echo "${{ secrets.GCP_KEY }}" | jq 'keys' || echo "JSON not valid"
           fi
 
