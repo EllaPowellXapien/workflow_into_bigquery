@@ -23,7 +23,7 @@ jobs:
       - name: Debug check secret
         run: |
           if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then
-            echo "GCP_KEY secret is NOT set!"
+            echo "GCP_SA_KEY secret is NOT set!"
             exit 1
           else
             echo " GCP_SA_KEY secret is detected."
